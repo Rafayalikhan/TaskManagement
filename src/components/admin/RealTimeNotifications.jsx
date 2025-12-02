@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { usePusher } from '@/hooks/usePusher';
 import toast from 'react-hot-toast';
-import { Bell, CheckCircle, Edit, Plus, X } from 'lucide-react';
+import { Bell, CheckCircle, Edit, Plus, X, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 
 export const RealTimeNotifications = ({ onTaskUpdate }) => {
@@ -17,9 +17,8 @@ export const RealTimeNotifications = ({ onTaskUpdate }) => {
   
   const [showPanel, setShowPanel] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
-  const updateTimeoutRef = useRef(null);
-  const isUpdatingRef = useRef(false);
   const eventQueueRef = useRef([]);
+  const isProcessingRef = useRef(false);
 
   // Initialize unread count
   useEffect(() => {
@@ -33,43 +32,49 @@ export const RealTimeNotifications = ({ onTaskUpdate }) => {
     }
   }, [notifications]);
 
-  // Process queued events
+  // Process event queue WITHOUT calling fetchTasks
   const processEventQueue = useCallback(() => {
-    if (eventQueueRef.current.length === 0 || !onTaskUpdate || isUpdatingRef.current) {
+    if (eventQueueRef.current.length === 0 || isProcessingRef.current || !onTaskUpdate) {
       return;
     }
 
-    isUpdatingRef.current = true;
+    isProcessingRef.current = true;
     
-    // Process all queued events
+    // Get all pending events
     const events = [...eventQueueRef.current];
     eventQueueRef.current = [];
     
-    console.log('🔄 Processing event queue:', events.length);
+    console.log('🔄 Processing event queue (NO API CALL):', events.length);
     
-    // Pass all events to parent component
+    // Send event data DIRECTLY to parent component
     events.forEach(event => {
-      onTaskUpdate(event);
+      console.log('📤 Sending event to parent:', event);
+      onTaskUpdate(event); // This should update local state only
     });
     
-    isUpdatingRef.current = false;
+    isProcessingRef.current = false;
   }, [onTaskUpdate]);
 
-  const handleTaskEvent = useCallback((type, data, message, icon, toastType = 'default') => {
-    console.log(`📢 ${type} Event Received:`, data);
+  const handleTaskEvent = useCallback((type, data) => {
+    console.log(`📢 ${type} Event Received (Direct Update):`, data);
     
-    // Add event to queue
-    eventQueueRef.current.push({
+    // Create complete event object
+    const eventObject = {
       type,
       taskId: data.taskId || data._id,
       title: data.title,
       description: data.description,
-      completed: data.completed,
-      user: data.user,
+      completed: data.completed || false,
+      user: data.user || { email: data.userId || 'Unknown User' },
       userId: data.userId,
-      timestamp: new Date()
-    });
+      createdAt: data.createdAt || new Date().toISOString(),
+      timestamp: new Date().toISOString()
+    };
 
+    // Add to queue
+    eventQueueRef.current.push(eventObject);
+
+    // Create notification
     const newNotification = {
       id: Date.now() + Math.random(),
       type,
@@ -82,23 +87,15 @@ export const RealTimeNotifications = ({ onTaskUpdate }) => {
       read: false
     };
 
-    console.log('📝 Creating notification:', newNotification);
-
-    // Show appropriate toast
-    if (toastType === 'success') {
-      toast.success(message, {
-        icon,
+    // Show toast WITHOUT triggering API call
+    if (type === 'created') {
+      toast.success(`📝 New task: ${data?.title || 'Unknown'}`, {
+        icon: <Plus className="text-blue-500" />,
         duration: 3000,
       });
-    } else if (toastType === 'error') {
-      toast.error(message, {
-        icon,
-        duration: 3000,
-      });
-    } else {
-      // For 'updated' events
-      toast(message, {
-        icon,
+    } else if (type === 'updated') {
+      toast(`✏️ Task updated: ${data?.title || 'Unknown'}`, {
+        icon: <Edit className="text-yellow-500" />,
         duration: 3000,
         style: {
           background: '#fef3c7',
@@ -106,78 +103,51 @@ export const RealTimeNotifications = ({ onTaskUpdate }) => {
           border: '1px solid #fbbf24',
         },
       });
+    } else if (type === 'completed') {
+      toast.success(`✅ Task completed: ${data?.title || 'Unknown'}`, {
+        icon: <CheckCircle className="text-green-500" />,
+        duration: 3000,
+      });
     }
 
+    // Update notifications
     setNotifications(prev => {
       const updated = [newNotification, ...prev.slice(0, 49)];
-      console.log('📊 Notifications updated, total:', updated.length);
       return updated;
     });
     
-    // Process event queue with delay
-    if (updateTimeoutRef.current) {
-      clearTimeout(updateTimeoutRef.current);
-    }
-    
-    updateTimeoutRef.current = setTimeout(() => {
+    // Process events after small delay (batched)
+    setTimeout(() => {
       processEventQueue();
-    }, 100); // Small delay to batch multiple events
+    }, 100);
   }, [processEventQueue]);
 
   const handleTaskCreated = useCallback((data) => {
-    console.log('🎯 Task Created Event:', data);
-    handleTaskEvent(
-      'created', 
-      data, 
-      `📝 New task: ${data?.title || 'Unknown'}`,
-      <Plus className="text-blue-500" />,
-      'success'
-    );
+    console.log('🎯 Task Created Event (Direct):', data);
+    handleTaskEvent('created', data);
   }, [handleTaskEvent]);
 
   const handleTaskUpdated = useCallback((data) => {
-    console.log('🎯 Task Updated Event:', data);
-    handleTaskEvent(
-      'updated', 
-      data, 
-      `✏️ Task updated: ${data?.title || 'Unknown'}`,
-      <Edit className="text-yellow-500" />,
-      'default'
-    );
+    console.log('🎯 Task Updated Event (Direct):', data);
+    handleTaskEvent('updated', data);
   }, [handleTaskEvent]);
 
   const handleTaskCompleted = useCallback((data) => {
-    console.log('🎯 Task Completed Event:', data);
-    handleTaskEvent(
-      'completed', 
-      data, 
-      `✅ Task completed: ${data?.title || 'Unknown'}`,
-      <CheckCircle className="text-green-500" />,
-      'success'
-    );
+    console.log('🎯 Task Completed Event (Direct):', data);
+    handleTaskEvent('completed', data);
   }, [handleTaskEvent]);
 
-  // Cleanup on unmount
+  // Subscribe to Pusher events
+  usePusher('admin-tasks', 'task-created', handleTaskCreated);
+  usePusher('admin-tasks', 'task-updated', handleTaskUpdated);
+  usePusher('admin-tasks', 'task-completed', handleTaskCompleted);
+
+  // Cleanup
   useEffect(() => {
     return () => {
-      if (updateTimeoutRef.current) {
-        clearTimeout(updateTimeoutRef.current);
-      }
-      isUpdatingRef.current = false;
+      isProcessingRef.current = false;
     };
   }, []);
-
-  // Subscribe to Pusher events
-  const isCreatedConnected = usePusher('admin-tasks', 'task-created', handleTaskCreated);
-  const isUpdatedConnected = usePusher('admin-tasks', 'task-updated', handleTaskUpdated);
-  const isCompletedConnected = usePusher('admin-tasks', 'task-completed', handleTaskCompleted);
-
-  console.log('📡 Pusher Connection Status:', {
-    created: isCreatedConnected,
-    updated: isUpdatedConnected,
-    completed: isCompletedConnected,
-    channel: 'admin-tasks'
-  });
 
   const markAsRead = (id) => {
     setNotifications(prev => 
@@ -240,7 +210,7 @@ export const RealTimeNotifications = ({ onTaskUpdate }) => {
           <div className="p-4 border-b border-gray-200 bg-gray-50">
             <div className="flex justify-between items-center">
               <h3 className="font-semibold text-gray-900">
-                Notifications ({notifications.length})
+                Live Updates ({notifications.length})
               </h3>
               <div className="flex gap-2">
                 {notifications.length > 0 && (
@@ -276,10 +246,10 @@ export const RealTimeNotifications = ({ onTaskUpdate }) => {
           <div className="overflow-y-auto max-h-80">
             {notifications.length === 0 ? (
               <div className="p-8 text-center text-gray-500">
-                <Bell className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-                <p>No notifications yet</p>
+                <Zap className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+                <p>Waiting for live updates...</p>
                 <p className="text-sm text-gray-400 mt-1">
-                  Real-time updates will appear here
+                  Real-time events will appear here
                 </p>
               </div>
             ) : (
@@ -301,11 +271,11 @@ export const RealTimeNotifications = ({ onTaskUpdate }) => {
                           {notification.title}
                         </p>
                         {!notification.read && (
-                          <span className="inline-block w-2 h-2 bg-blue-500 rounded-full"></span>
+                          <span className="inline-block w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
                         )}
                       </div>
                       <p className="text-sm text-gray-600 mt-1 capitalize">
-                        {notification.type} • {notification.message}
+                        <span className="font-medium">{notification.type}</span> • {notification.message}
                       </p>
                       <div className="flex justify-between items-center mt-2">
                         <span className="text-xs text-gray-500">
