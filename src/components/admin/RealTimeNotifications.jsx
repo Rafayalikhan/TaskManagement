@@ -19,6 +19,7 @@ export const RealTimeNotifications = ({ onTaskUpdate }) => {
   const [unreadCount, setUnreadCount] = useState(0);
   const updateTimeoutRef = useRef(null);
   const isUpdatingRef = useRef(false);
+  const eventQueueRef = useRef([]);
 
   // Initialize unread count
   useEffect(() => {
@@ -32,37 +33,43 @@ export const RealTimeNotifications = ({ onTaskUpdate }) => {
     }
   }, [notifications]);
 
-  // **Optimized real-time update with better debouncing**
-  const handleRealTimeUpdate = useCallback(() => {
-    if (!onTaskUpdate || isUpdatingRef.current) {
-      console.log('⏸️ Update skipped - already in progress or no handler');
+  // Process queued events
+  const processEventQueue = useCallback(() => {
+    if (eventQueueRef.current.length === 0 || !onTaskUpdate || isUpdatingRef.current) {
       return;
     }
 
-    // Clear any existing timeout
-    if (updateTimeoutRef.current) {
-      clearTimeout(updateTimeoutRef.current);
-    }
-    
-    // Set updating flag
     isUpdatingRef.current = true;
     
-    // Debounced update after 2 seconds (longer delay to prevent rapid updates)
-    updateTimeoutRef.current = setTimeout(() => {
-      console.log('🔄 Triggering debounced real-time update');
-      onTaskUpdate();
-      isUpdatingRef.current = false;
-    }, 2000);
+    // Process all queued events
+    const events = [...eventQueueRef.current];
+    eventQueueRef.current = [];
+    
+    console.log('🔄 Processing event queue:', events.length);
+    
+    // Pass all events to parent component
+    events.forEach(event => {
+      onTaskUpdate(event);
+    });
+    
+    isUpdatingRef.current = false;
   }, [onTaskUpdate]);
 
   const handleTaskEvent = useCallback((type, data, message, icon, toastType = 'default') => {
-    console.log(`📢 ${type} Event Received:`, {
-      data,
-      hasTitle: !!data?.title,
-      hasUser: !!data?.user,
-      timestamp: new Date().toISOString()
-    });
+    console.log(`📢 ${type} Event Received:`, data);
     
+    // Add event to queue
+    eventQueueRef.current.push({
+      type,
+      taskId: data.taskId || data._id,
+      title: data.title,
+      description: data.description,
+      completed: data.completed,
+      user: data.user,
+      userId: data.userId,
+      timestamp: new Date()
+    });
+
     const newNotification = {
       id: Date.now() + Math.random(),
       type,
@@ -89,7 +96,7 @@ export const RealTimeNotifications = ({ onTaskUpdate }) => {
         duration: 3000,
       });
     } else {
-      // For 'updated' events - use regular toast with custom styling
+      // For 'updated' events
       toast(message, {
         icon,
         duration: 3000,
@@ -107,9 +114,15 @@ export const RealTimeNotifications = ({ onTaskUpdate }) => {
       return updated;
     });
     
-    // Trigger real-time update (debounced)
-    handleRealTimeUpdate();
-  }, [handleRealTimeUpdate]);
+    // Process event queue with delay
+    if (updateTimeoutRef.current) {
+      clearTimeout(updateTimeoutRef.current);
+    }
+    
+    updateTimeoutRef.current = setTimeout(() => {
+      processEventQueue();
+    }, 100); // Small delay to batch multiple events
+  }, [processEventQueue]);
 
   const handleTaskCreated = useCallback((data) => {
     console.log('🎯 Task Created Event:', data);
@@ -154,7 +167,7 @@ export const RealTimeNotifications = ({ onTaskUpdate }) => {
     };
   }, []);
 
-  // Subscribe to Pusher events with logging
+  // Subscribe to Pusher events
   const isCreatedConnected = usePusher('admin-tasks', 'task-created', handleTaskCreated);
   const isUpdatedConnected = usePusher('admin-tasks', 'task-updated', handleTaskUpdated);
   const isCompletedConnected = usePusher('admin-tasks', 'task-completed', handleTaskCompleted);
@@ -201,7 +214,8 @@ export const RealTimeNotifications = ({ onTaskUpdate }) => {
   const formatTime = (timestamp) => {
     return new Date(timestamp).toLocaleTimeString('en-US', {
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      second: '2-digit'
     });
   };
 
@@ -312,6 +326,321 @@ export const RealTimeNotifications = ({ onTaskUpdate }) => {
     </div>
   );
 };
+
+// 'use client';
+
+// import { useState, useCallback, useEffect, useRef } from 'react';
+// import { usePusher } from '@/hooks/usePusher';
+// import toast from 'react-hot-toast';
+// import { Bell, CheckCircle, Edit, Plus, X } from 'lucide-react';
+// import { Button } from '@/components/ui/Button';
+
+// export const RealTimeNotifications = ({ onTaskUpdate }) => {
+//   const [notifications, setNotifications] = useState(() => {
+//     if (typeof window !== 'undefined') {
+//       const saved = localStorage.getItem('taskNotifications');
+//       return saved ? JSON.parse(saved) : [];
+//     }
+//     return [];
+//   });
+  
+//   const [showPanel, setShowPanel] = useState(false);
+//   const [unreadCount, setUnreadCount] = useState(0);
+//   const updateTimeoutRef = useRef(null);
+//   const isUpdatingRef = useRef(false);
+
+//   // Initialize unread count
+//   useEffect(() => {
+//     setUnreadCount(notifications.filter(n => !n.read).length);
+//   }, [notifications]);
+
+//   // Save to localStorage
+//   useEffect(() => {
+//     if (typeof window !== 'undefined') {
+//       localStorage.setItem('taskNotifications', JSON.stringify(notifications));
+//     }
+//   }, [notifications]);
+
+//   // **Optimized real-time update with better debouncing**
+//   const handleRealTimeUpdate = useCallback(() => {
+//     if (!onTaskUpdate || isUpdatingRef.current) {
+//       console.log('⏸️ Update skipped - already in progress or no handler');
+//       return;
+//     }
+
+//     // Clear any existing timeout
+//     if (updateTimeoutRef.current) {
+//       clearTimeout(updateTimeoutRef.current);
+//     }
+    
+//     // Set updating flag
+//     isUpdatingRef.current = true;
+    
+//     // Debounced update after 2 seconds (longer delay to prevent rapid updates)
+//     updateTimeoutRef.current = setTimeout(() => {
+//       console.log('🔄 Triggering debounced real-time update');
+//       onTaskUpdate();
+//       isUpdatingRef.current = false;
+//     }, 2000);
+//   }, [onTaskUpdate]);
+
+//   const handleTaskEvent = useCallback((type, data, message, icon, toastType = 'default') => {
+//     console.log(`📢 ${type} Event Received:`, {
+//       data,
+//       hasTitle: !!data?.title,
+//       hasUser: !!data?.user,
+//       timestamp: new Date().toISOString()
+//     });
+    
+//     const newNotification = {
+//       id: Date.now() + Math.random(),
+//       type,
+//       title: data?.title || 'Unknown Task',
+//       user: data?.user?.email || data?.userId || 'Unknown User',
+//       message: type === 'created' ? 'New task created' : 
+//                type === 'updated' ? 'Task updated' : 
+//                type === 'completed' ? 'Task completed' : 'Task event',
+//       timestamp: new Date().toISOString(),
+//       read: false
+//     };
+
+//     console.log('📝 Creating notification:', newNotification);
+
+//     // Show appropriate toast
+//     if (toastType === 'success') {
+//       toast.success(message, {
+//         icon,
+//         duration: 3000,
+//       });
+//     } else if (toastType === 'error') {
+//       toast.error(message, {
+//         icon,
+//         duration: 3000,
+//       });
+//     } else {
+//       // For 'updated' events - use regular toast with custom styling
+//       toast(message, {
+//         icon,
+//         duration: 3000,
+//         style: {
+//           background: '#fef3c7',
+//           color: '#92400e',
+//           border: '1px solid #fbbf24',
+//         },
+//       });
+//     }
+
+//     setNotifications(prev => {
+//       const updated = [newNotification, ...prev.slice(0, 49)];
+//       console.log('📊 Notifications updated, total:', updated.length);
+//       return updated;
+//     });
+    
+//     // Trigger real-time update (debounced)
+//     handleRealTimeUpdate();
+//   }, [handleRealTimeUpdate]);
+
+//   const handleTaskCreated = useCallback((data) => {
+//     console.log('🎯 Task Created Event:', data);
+//     handleTaskEvent(
+//       'created', 
+//       data, 
+//       `📝 New task: ${data?.title || 'Unknown'}`,
+//       <Plus className="text-blue-500" />,
+//       'success'
+//     );
+//   }, [handleTaskEvent]);
+
+//   const handleTaskUpdated = useCallback((data) => {
+//     console.log('🎯 Task Updated Event:', data);
+//     handleTaskEvent(
+//       'updated', 
+//       data, 
+//       `✏️ Task updated: ${data?.title || 'Unknown'}`,
+//       <Edit className="text-yellow-500" />,
+//       'default'
+//     );
+//   }, [handleTaskEvent]);
+
+//   const handleTaskCompleted = useCallback((data) => {
+//     console.log('🎯 Task Completed Event:', data);
+//     handleTaskEvent(
+//       'completed', 
+//       data, 
+//       `✅ Task completed: ${data?.title || 'Unknown'}`,
+//       <CheckCircle className="text-green-500" />,
+//       'success'
+//     );
+//   }, [handleTaskEvent]);
+
+//   // Cleanup on unmount
+//   useEffect(() => {
+//     return () => {
+//       if (updateTimeoutRef.current) {
+//         clearTimeout(updateTimeoutRef.current);
+//       }
+//       isUpdatingRef.current = false;
+//     };
+//   }, []);
+
+//   // Subscribe to Pusher events with logging
+//   const isCreatedConnected = usePusher('admin-tasks', 'task-created', handleTaskCreated);
+//   const isUpdatedConnected = usePusher('admin-tasks', 'task-updated', handleTaskUpdated);
+//   const isCompletedConnected = usePusher('admin-tasks', 'task-completed', handleTaskCompleted);
+
+//   console.log('📡 Pusher Connection Status:', {
+//     created: isCreatedConnected,
+//     updated: isUpdatedConnected,
+//     completed: isCompletedConnected,
+//     channel: 'admin-tasks'
+//   });
+
+//   const markAsRead = (id) => {
+//     setNotifications(prev => 
+//       prev.map(notif => 
+//         notif.id === id ? { ...notif, read: true } : notif
+//       )
+//     );
+//   };
+
+//   const markAllAsRead = () => {
+//     setNotifications(prev => 
+//       prev.map(notif => ({ ...notif, read: true }))
+//     );
+//   };
+
+//   const clearAll = () => {
+//     setNotifications([]);
+//   };
+
+//   // Update unread count
+//   useEffect(() => {
+//     setUnreadCount(notifications.filter(n => !n.read).length);
+//   }, [notifications]);
+
+//   const getNotificationIcon = (type) => {
+//     switch (type) {
+//       case 'created': return <Plus className="w-4 h-4 text-blue-500" />;
+//       case 'updated': return <Edit className="w-4 h-4 text-yellow-500" />;
+//       case 'completed': return <CheckCircle className="w-4 h-4 text-green-500" />;
+//       default: return <Bell className="w-4 h-4 text-gray-500" />;
+//     }
+//   };
+
+//   const formatTime = (timestamp) => {
+//     return new Date(timestamp).toLocaleTimeString('en-US', {
+//       hour: '2-digit',
+//       minute: '2-digit'
+//     });
+//   };
+
+//   return (
+//     <div className="relative">
+//       <Button
+//         variant="secondary"
+//         size="sm"
+//         onClick={() => setShowPanel(!showPanel)}
+//         className="relative"
+//       >
+//         <Bell className="w-5 h-5" />
+//         {unreadCount > 0 && (
+//           <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+//             {unreadCount > 9 ? '9+' : unreadCount}
+//           </span>
+//         )}
+//       </Button>
+
+//       {showPanel && (
+//         <div className="absolute right-0 top-12 w-96 bg-white rounded-lg shadow-xl border border-gray-200 z-50 max-h-96 overflow-hidden">
+//           <div className="p-4 border-b border-gray-200 bg-gray-50">
+//             <div className="flex justify-between items-center">
+//               <h3 className="font-semibold text-gray-900">
+//                 Notifications ({notifications.length})
+//               </h3>
+//               <div className="flex gap-2">
+//                 {notifications.length > 0 && (
+//                   <>
+//                     <Button
+//                       variant="secondary"
+//                       size="sm"
+//                       onClick={markAllAsRead}
+//                       disabled={unreadCount === 0}
+//                     >
+//                       Mark all read
+//                     </Button>
+//                     <Button
+//                       variant="danger"
+//                       size="sm"
+//                       onClick={clearAll}
+//                     >
+//                       Clear all
+//                     </Button>
+//                   </>
+//                 )}
+//                 <Button
+//                   variant="secondary"
+//                   size="sm"
+//                   onClick={() => setShowPanel(false)}
+//                 >
+//                   <X className="w-4 h-4" />
+//                 </Button>
+//               </div>
+//             </div>
+//           </div>
+
+//           <div className="overflow-y-auto max-h-80">
+//             {notifications.length === 0 ? (
+//               <div className="p-8 text-center text-gray-500">
+//                 <Bell className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+//                 <p>No notifications yet</p>
+//                 <p className="text-sm text-gray-400 mt-1">
+//                   Real-time updates will appear here
+//                 </p>
+//               </div>
+//             ) : (
+//               notifications.map((notification) => (
+//                 <div
+//                   key={notification.id}
+//                   className={`p-4 border-b border-gray-100 cursor-pointer transition-colors ${
+//                     !notification.read ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50'
+//                   }`}
+//                   onClick={() => markAsRead(notification.id)}
+//                 >
+//                   <div className="flex items-start gap-3">
+//                     <div className="flex-shrink-0 mt-0.5">
+//                       {getNotificationIcon(notification.type)}
+//                     </div>
+//                     <div className="flex-1 min-w-0">
+//                       <div className="flex items-center gap-2">
+//                         <p className="text-sm font-medium text-gray-900 truncate">
+//                           {notification.title}
+//                         </p>
+//                         {!notification.read && (
+//                           <span className="inline-block w-2 h-2 bg-blue-500 rounded-full"></span>
+//                         )}
+//                       </div>
+//                       <p className="text-sm text-gray-600 mt-1 capitalize">
+//                         {notification.type} • {notification.message}
+//                       </p>
+//                       <div className="flex justify-between items-center mt-2">
+//                         <span className="text-xs text-gray-500">
+//                           By: {notification.user}
+//                         </span>
+//                         <span className="text-xs text-gray-400">
+//                           {formatTime(notification.timestamp)}
+//                         </span>
+//                       </div>
+//                     </div>
+//                   </div>
+//                 </div>
+//               ))
+//             )}
+//           </div>
+//         </div>
+//       )}
+//     </div>
+//   );
+// };
 // 'use client';
 
 // import { useState, useCallback, useEffect, useRef } from 'react';
