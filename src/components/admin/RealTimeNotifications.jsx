@@ -55,40 +55,93 @@ export const RealTimeNotifications = ({ onTaskUpdate }) => {
     }, 2000);
   }, [onTaskUpdate]);
 
-  const handleTaskEvent = useCallback((type, data, message, icon) => {
-    console.log(`📢 ${type} Event:`, data);
+  const handleTaskEvent = useCallback((type, data, message, icon, toastType = 'default') => {
+    console.log(`📢 ${type} Event Received:`, {
+      data,
+      hasTitle: !!data?.title,
+      hasUser: !!data?.user,
+      timestamp: new Date().toISOString()
+    });
     
     const newNotification = {
       id: Date.now() + Math.random(),
       type,
-      title: data.title,
-      user: data.user?.email || 'Unknown User',
-      message,
+      title: data?.title || 'Unknown Task',
+      user: data?.user?.email || data?.userId || 'Unknown User',
+      message: type === 'created' ? 'New task created' : 
+               type === 'updated' ? 'Task updated' : 
+               type === 'completed' ? 'Task completed' : 'Task event',
       timestamp: new Date().toISOString(),
       read: false
     };
 
-    toast[type === 'error' ? 'error' : type === 'completed' || type === 'created' ? 'success' : ''](message, {
-      icon,
-      duration: 3000,
-    });
+    console.log('📝 Creating notification:', newNotification);
 
-    setNotifications(prev => [newNotification, ...prev.slice(0, 49)]);
+    // Show appropriate toast
+    if (toastType === 'success') {
+      toast.success(message, {
+        icon,
+        duration: 3000,
+      });
+    } else if (toastType === 'error') {
+      toast.error(message, {
+        icon,
+        duration: 3000,
+      });
+    } else {
+      // For 'updated' events - use regular toast with custom styling
+      toast(message, {
+        icon,
+        duration: 3000,
+        style: {
+          background: '#fef3c7',
+          color: '#92400e',
+          border: '1px solid #fbbf24',
+        },
+      });
+    }
+
+    setNotifications(prev => {
+      const updated = [newNotification, ...prev.slice(0, 49)];
+      console.log('📊 Notifications updated, total:', updated.length);
+      return updated;
+    });
     
     // Trigger real-time update (debounced)
     handleRealTimeUpdate();
   }, [handleRealTimeUpdate]);
 
   const handleTaskCreated = useCallback((data) => {
-    handleTaskEvent('created', data, `📝 New task: ${data.title}`, <Plus className="text-blue-500" />);
+    console.log('🎯 Task Created Event:', data);
+    handleTaskEvent(
+      'created', 
+      data, 
+      `📝 New task: ${data?.title || 'Unknown'}`,
+      <Plus className="text-blue-500" />,
+      'success'
+    );
   }, [handleTaskEvent]);
 
   const handleTaskUpdated = useCallback((data) => {
-    handleTaskEvent('updated', data, `✏️ Task updated: ${data.title}`, <Edit className="text-yellow-500" />);
+    console.log('🎯 Task Updated Event:', data);
+    handleTaskEvent(
+      'updated', 
+      data, 
+      `✏️ Task updated: ${data?.title || 'Unknown'}`,
+      <Edit className="text-yellow-500" />,
+      'default'
+    );
   }, [handleTaskEvent]);
 
   const handleTaskCompleted = useCallback((data) => {
-    handleTaskEvent('completed', data, `✅ Task completed: ${data.title}`, <CheckCircle className="text-green-500" />);
+    console.log('🎯 Task Completed Event:', data);
+    handleTaskEvent(
+      'completed', 
+      data, 
+      `✅ Task completed: ${data?.title || 'Unknown'}`,
+      <CheckCircle className="text-green-500" />,
+      'success'
+    );
   }, [handleTaskEvent]);
 
   // Cleanup on unmount
@@ -101,10 +154,17 @@ export const RealTimeNotifications = ({ onTaskUpdate }) => {
     };
   }, []);
 
-  // Subscribe to Pusher events
-  usePusher('admin-tasks', 'task-created', handleTaskCreated);
-  usePusher('admin-tasks', 'task-updated', handleTaskUpdated);
-  usePusher('admin-tasks', 'task-completed', handleTaskCompleted);
+  // Subscribe to Pusher events with logging
+  const isCreatedConnected = usePusher('admin-tasks', 'task-created', handleTaskCreated);
+  const isUpdatedConnected = usePusher('admin-tasks', 'task-updated', handleTaskUpdated);
+  const isCompletedConnected = usePusher('admin-tasks', 'task-completed', handleTaskCompleted);
+
+  console.log('📡 Pusher Connection Status:', {
+    created: isCreatedConnected,
+    updated: isUpdatedConnected,
+    completed: isCompletedConnected,
+    channel: 'admin-tasks'
+  });
 
   const markAsRead = (id) => {
     setNotifications(prev => 
@@ -230,8 +290,8 @@ export const RealTimeNotifications = ({ onTaskUpdate }) => {
                           <span className="inline-block w-2 h-2 bg-blue-500 rounded-full"></span>
                         )}
                       </div>
-                      <p className="text-sm text-gray-600 mt-1">
-                        {notification.message}
+                      <p className="text-sm text-gray-600 mt-1 capitalize">
+                        {notification.type} • {notification.message}
                       </p>
                       <div className="flex justify-between items-center mt-2">
                         <span className="text-xs text-gray-500">
