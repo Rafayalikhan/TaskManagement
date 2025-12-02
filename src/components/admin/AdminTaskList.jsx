@@ -142,7 +142,7 @@ export const AdminTaskList = () => {
         
         <div className="flex items-center gap-4">
           {/* Real-time Notifications */}
-          <RealTimeNotifications onTaskUpdate={handleRealTimeUpdate} />
+          {/* <RealTimeNotifications onTaskUpdate={handleRealTimeUpdate} /> */}
           
           <Button 
             onClick={handleManualRefresh}
