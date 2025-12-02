@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { RealTimeNotifications } from './RealTimeNotifications';
 import { formatDate } from '@/lib/utils';
-import { CheckCircle, AlertCircle, Loader2, Clock } from 'lucide-react';
+import { CheckCircle, AlertCircle, Loader2, Clock, Zap } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export const AdminTaskList = () => {
@@ -18,9 +18,9 @@ export const AdminTaskList = () => {
   const isMounted = useRef(true);
   const updateInProgress = useRef(false);
   const realTimeUpdateCount = useRef(0);
+  const lastRealTimeUpdate = useRef(new Date());
 
   const fetchTasks = useCallback(async (showToast = false) => {
-    // Prevent multiple simultaneous calls
     if (updateInProgress.current) {
       console.log('⚠️ Update already in progress, skipping...');
       return;
@@ -68,49 +68,80 @@ export const AdminTaskList = () => {
     }
   }, []);
 
-  // **NEW: Optimized local updates without API call**
-  const handleLocalTaskUpdate = useCallback((eventData) => {
-    console.log('🎯 Processing local task update:', eventData);
+  // **OPTIMIZED: Handle real-time updates with local state only**
+  const handleRealTimeUpdate = useCallback((eventData) => {
+    if (!eventData) {
+      console.log('⚠️ No event data received');
+      return;
+    }
+
+    console.log('🎯 Processing real-time update:', eventData);
     realTimeUpdateCount.current++;
-    
+    lastRealTimeUpdate.current = new Date();
+
     setTasks(prevTasks => {
       const updatedTasks = [...prevTasks];
-      const taskIndex = updatedTasks.findIndex(task => 
-        task._id === eventData.taskId || task.taskId === eventData.taskId
-      );
-
-      if (taskIndex !== -1) {
-        // Update existing task locally
-        updatedTasks[taskIndex] = {
-          ...updatedTasks[taskIndex],
-          ...eventData,
-          user: eventData.user || updatedTasks[taskIndex].user,
-          updatedAt: new Date()
-        };
-        console.log('✅ Task updated locally:', eventData.title);
-      } else if (eventData.type === 'created') {
-        // Add new task at the beginning
+      
+      // Check if this is a new task (created)
+      if (eventData.type === 'created') {
         const newTask = {
           _id: eventData.taskId,
           taskId: eventData.taskId,
           title: eventData.title,
           description: eventData.description,
           completed: eventData.completed || false,
-          user: eventData.user || { email: 'Unknown User' },
+          user: eventData.user || { email: eventData.userId || 'Unknown User' },
           createdAt: new Date(),
           updatedAt: new Date()
         };
+        
+        console.log('📝 Adding new task:', newTask.title);
+        return [newTask, ...updatedTasks];
+      }
+      
+      // Update existing task
+      const taskIndex = updatedTasks.findIndex(task => 
+        task._id === eventData.taskId || task.taskId === eventData.taskId
+      );
+
+      if (taskIndex !== -1) {
+        console.log('✏️ Updating existing task:', eventData.title);
+        updatedTasks[taskIndex] = {
+          ...updatedTasks[taskIndex],
+          title: eventData.title || updatedTasks[taskIndex].title,
+          description: eventData.description || updatedTasks[taskIndex].description,
+          completed: eventData.completed !== undefined ? eventData.completed : updatedTasks[taskIndex].completed,
+          user: eventData.user || updatedTasks[taskIndex].user,
+          updatedAt: new Date()
+        };
+      } else {
+        console.log('⚠️ Task not found in local state, adding:', eventData.title);
+        const newTask = {
+          _id: eventData.taskId,
+          taskId: eventData.taskId,
+          title: eventData.title,
+          description: eventData.description,
+          completed: eventData.completed || false,
+          user: eventData.user || { email: eventData.userId || 'Unknown User' },
+          createdAt: new Date(eventData.createdAt || new Date()),
+          updatedAt: new Date()
+        };
         updatedTasks.unshift(newTask);
-        console.log('✅ New task added locally:', eventData.title);
       }
       
       return updatedTasks;
     });
 
     setLastUpdate(new Date());
+    
+    // Show subtle notification
+    toast.success(`Real-time update: ${eventData.title}`, {
+      duration: 2000,
+      icon: <Zap className="w-4 h-4 text-yellow-500" />
+    });
   }, []);
 
-  // Initial fetch - only once on mount
+  // Initial fetch
   useEffect(() => {
     isMounted.current = true;
     console.log('🚀 AdminTaskList mounted, fetching initial tasks...');
@@ -118,17 +149,8 @@ export const AdminTaskList = () => {
 
     return () => {
       isMounted.current = false;
-      console.log('🧹 AdminTaskList unmounting...');
     };
   }, [fetchTasks]);
-
-  // Handle real-time updates with local updates
-  const handleRealTimeUpdate = useCallback((eventData) => {
-    console.log('🎯 Real-time update received:', eventData);
-    
-    // Update locally without API call
-    handleLocalTaskUpdate(eventData);
-  }, [handleLocalTaskUpdate]);
 
   const stats = {
     total: tasks.length,
@@ -137,7 +159,6 @@ export const AdminTaskList = () => {
   };
 
   const formatLastUpdate = () => {
-    if (!lastUpdate) return 'Never';
     const now = new Date();
     const diff = Math.floor((now - lastUpdate) / 1000);
     
@@ -145,9 +166,16 @@ export const AdminTaskList = () => {
     if (diff < 3600) return `${Math.floor(diff / 60)} minutes ago`;
     return lastUpdate.toLocaleTimeString('en-US', {
       hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
+      minute: '2-digit'
     });
+  };
+
+  const formatRealTimeUpdate = () => {
+    const diff = Math.floor((new Date() - lastRealTimeUpdate.current) / 1000);
+    if (realTimeUpdateCount.current === 0) return 'No real-time updates yet';
+    
+    if (diff < 60) return `${diff} seconds ago`;
+    return `${Math.floor(diff / 60)} minutes ago`;
   };
 
   const handleManualRefresh = () => {
@@ -161,26 +189,30 @@ export const AdminTaskList = () => {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
-          <div className="flex items-center gap-4 mt-2">
-            <p className="text-sm text-gray-600">
-              Real-time task monitoring
-            </p>
+          <div className="flex flex-wrap items-center gap-4 mt-2">
             <div className="flex items-center gap-2 bg-blue-50 px-3 py-1 rounded-full">
               <Clock className="w-4 h-4 text-blue-600" />
               <span className="text-xs text-blue-700 font-medium">
-                Last update: {formatLastUpdate()}
+                Last sync: {formatLastUpdate()}
               </span>
-              {realTimeUpdateCount.current > 0 && (
-                <Badge variant="outline" className="ml-2">
-                  {realTimeUpdateCount.current} real-time updates
-                </Badge>
-              )}
             </div>
+            
+            {realTimeUpdateCount.current > 0 && (
+              <div className="flex items-center gap-2 bg-green-50 px-3 py-1 rounded-full">
+                <Zap className="w-4 h-4 text-green-600" />
+                <span className="text-xs text-green-700 font-medium">
+                  {realTimeUpdateCount.current} real-time updates
+                </span>
+                <span className="text-xs text-green-600">
+                  (Last: {formatRealTimeUpdate()})
+                </span>
+              </div>
+            )}
           </div>
         </div>
         
         <div className="flex items-center gap-4">
-          {/* Real-time Notifications with local updates */}
+          {/* ✅ REAL-TIME NOTIFICATIONS ENABLED */}
           <RealTimeNotifications onTaskUpdate={handleRealTimeUpdate} />
           
           <Button 
@@ -199,7 +231,7 @@ export const AdminTaskList = () => {
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                Refresh Tasks
+                Sync Now
               </span>
             )}
           </Button>
@@ -258,19 +290,20 @@ export const AdminTaskList = () => {
               {tasks.length} tasks
             </Badge>
             {realTimeUpdateCount.current > 0 && (
-              <Badge variant="outline" className="bg-green-50 text-green-700">
-                {realTimeUpdateCount.current} real-time updates
+              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                <Zap className="w-3 h-3 mr-1" />
+                {realTimeUpdateCount.current} live updates
               </Badge>
             )}
             {loading && (
               <span className="text-sm text-yellow-600 flex items-center gap-1">
                 <Loader2 className="w-3 h-3 animate-spin" />
-                Updating...
+                Syncing...
               </span>
             )}
           </div>
           <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${realTimeUpdateCount.current > 0 ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`}></div>
+            <div className={`w-3 h-3 rounded-full ${realTimeUpdateCount.current > 0 ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`}></div>
             <span className="text-sm text-gray-500">
               {realTimeUpdateCount.current > 0 ? 'Live updates active' : 'Real-time ready'}
             </span>
@@ -292,7 +325,7 @@ export const AdminTaskList = () => {
           ) : (
             <div className="space-y-4">
               {tasks.map((task) => (
-                <Card key={task._id || task.taskId} className="p-6 hover:shadow-lg transition-shadow duration-300 border-l-4 border-l-blue-500">
+                <Card key={task._id || task.taskId} className="p-6 hover:shadow-lg transition-all duration-300 border-l-4 border-l-blue-500 hover:border-l-green-500">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-3">
@@ -303,8 +336,9 @@ export const AdminTaskList = () => {
                           {task.completed ? '✅ Completed' : '⏳ Pending'}
                         </Badge>
                         {task.updatedAt && task.createdAt !== task.updatedAt && (
-                          <Badge variant="outline" className="text-blue-600 border-blue-200">
-                            Recently Updated
+                          <Badge variant="outline" className="text-blue-600 border-blue-200 bg-blue-50">
+                            <Zap className="w-3 h-3 mr-1" />
+                            Updated
                           </Badge>
                         )}
                       </div>
