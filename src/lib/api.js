@@ -7,12 +7,7 @@ export const authAPI = {
   getMe: () => axiosInstance.get('/auth/me'),
 };
 
-// Task APIs
-// export const taskAPI = {
-//   getUserTasks: () => axiosInstance.get('/tasks'),
-//   createTask: (data) => axiosInstance.post('/tasks', data),
-//   updateTask: (taskId, data) => axiosInstance.put(`/tasks/${taskId}`, data),
-// };
+
 
 export const taskAPI = {
   getUserTasks: () => axiosInstance.get('/tasks'),

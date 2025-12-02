@@ -34,31 +34,3 @@ export const usePusher = (channelName, eventName, callback) => {
 };
 
 
-//add new one
-
-// 'use client';
-
-// import { useEffect, useState } from 'react';
-// import { getPusher } from '@/lib/pusher';
-
-// export const usePusher = (channelName, eventName, callback) => {
-//   const [isConnected, setIsConnected] = useState(false);
-
-//   useEffect(() => {
-//     const pusher = getPusher();
-//     const channel = pusher.subscribe(channelName);
-
-//     channel.bind('pusher:subscription_succeeded', () => {
-//       setIsConnected(true);
-//     });
-
-//     channel.bind(eventName, callback);
-
-//     return () => {
-//       channel.unbind(eventName, callback);
-//       pusher.unsubscribe(channelName);
-//     };
-//   }, [channelName, eventName, callback]);
-
-//   return isConnected;
-// };

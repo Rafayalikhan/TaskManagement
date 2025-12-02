@@ -3,7 +3,7 @@ import { CheckCircle2, Circle, Edit } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 
 export const TaskCard = ({ task, onEdit }) => {
-  // Temporary - direct HTML elements use karein
+
   return (
     <div className="p-4 border rounded-lg shadow-sm bg-white mb-4">
       <div className="flex items-start justify-between">
