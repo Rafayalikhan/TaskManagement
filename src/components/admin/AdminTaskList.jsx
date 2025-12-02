@@ -171,9 +171,9 @@ export const AdminTaskList = () => {
           <div className="flex flex-wrap items-center gap-3 mt-2">
             <div className="flex items-center gap-2 bg-blue-50 px-3 py-1.5 rounded-full">
               <Clock className="w-4 h-4 text-blue-600" />
-              <span className="text-sm text-blue-700 font-medium">
+              {/* <span className="text-sm text-blue-700 font-medium">
                 Last sync: {formatTimeAgo(lastSync)}
-              </span>
+              </span> */}
             </div>
             
             {realTimeUpdateCount.current > 0 && (
@@ -192,7 +192,7 @@ export const AdminTaskList = () => {
         
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           {/* Real-time Notifications */}
-          <RealTimeNotifications onTaskUpdate={handleRealTimeUpdate} />
+          {/* <RealTimeNotifications onTaskUpdate={handleRealTimeUpdate} /> */}
           
           <Button 
             onClick={handleManualRefresh}
